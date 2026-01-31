@@ -1,0 +1,45 @@
+# Temporary files
+*.tmp
+*.temp
+*~
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Backup files
+*.bak
+*.backup
+
+# IDE specific files
+.vscode/
+.idea/
+*.code-workspace
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+test-output/
+coverage/
+
+# Binary files
+*.bin
+*.exe
+
+# Credentials
+.env
+.secret
+*.key
+*.pem
+*.crt
+
+# Large files
+*.tar
+*.gz
+*.zip
+*.rar
