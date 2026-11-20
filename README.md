@@ -1,138 +1,165 @@
 # Server First Steps
 
-A comprehensive, interactive setup script for Ubuntu Server that installs Docker, Cockpit web interface, and essential management tools in one command.
+An idempotent setup script that turns a fresh Ubuntu Server install into a
+headless home server you can run and reach unattended. It installs Docker CE
+and Cockpit, then fixes the things that make a server fail months later in
+someone else's house: missing DHCP in netplan, password SSH, an open firewall,
+no panic recovery, and unbounded container logs.
 
-## 🚀 Features
+## Features
 
-- **Docker CE** - Latest version with Docker Compose
-- **Cockpit** - Web-based server management interface
-- **Cockpit Navigator** - File manager for Cockpit
-- **Optional Cockpit Modules**:
-  - Docker module (container management)
-  - Podman module (alternative container runtime)
-  - 389-ds module (directory server management)
-  - Machines module (virtual machine management)
-- **Automatic firewall configuration** (if using UFW)
-- **Interactive prompts** - Choose what to install
-- **System verification** - Checks Ubuntu version and permissions
+- **Docker CE** with Compose, log rotation, and `live-restore`
+- **Cockpit** on port 9090, with Navigator and optional modules
+- **netplan DHCP repair** for installs that ran without a network cable
+- **Key-only SSH** with root login disabled
+- **Firewall defaults** that deny inbound, allow SSH, and scope Cockpit to the LAN
+- **Panic recovery** so a kernel panic reboots the box by itself
+- **Unattended security updates** without surprise reboots
+- **Optional Tailscale**, for administration from anywhere
+- **Optional cloudflared**, for publishing services through a Cloudflare Tunnel
+- **Optional opencode** for the account you nominate
+- **Idempotent** — a second run skips everything already done
 
-## 📋 Prerequisites
+## Prerequisites
 
-- Fresh Ubuntu Server installation (20.04 LTS, 22.04 LTS, or 24.04 LTS)
-- Root access or sudo privileges
-- Internet connection
+- Fresh Ubuntu Server install, 22.04 LTS or newer
+- Root access or sudo
+- An internet connection
+- Your SSH public key already in `~/.ssh/authorized_keys` on the server. The
+  script turns password logins off, so add the key first or keep a console
+  session open.
 
-## 🛠️ Installation
+## Installation
 
-1. **Download the script**
-   ```bash
-   wget https://raw.githubusercontent.com/yourusername/server-firststeps/main/setup.sh
-   ```
+```bash
+git clone https://github.com/kidtaroi/server-firststeps.git
+cd server-firststeps
+sudo ./setup.sh
+```
 
-2. **Make it executable**
-   ```bash
-   chmod +x setup.sh
-   ```
+Non-interactive with the common options:
 
-3. **Run as root**
-   ```bash
-   sudo ./setup.sh
-   ```
+```bash
+sudo ./setup.sh --yes --user "$USER" --with-tailscale --with-cloudflared
+```
 
-   Or run directly as root:
-   ```bash
-   sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/yourusername/server-firststeps/main/setup.sh)"
-   ```
+## Flags
 
-## 🎯 What Gets Installed
+| Flag | Effect |
+| --- | --- |
+| `--yes` | Accept defaults, no prompts |
+| `--user NAME` | Add to the `docker` group and target for opencode |
+| `--with-tailscale` | Install Tailscale, login still manual |
+| `--with-cloudflared` | Install cloudflared, token still manual |
+| `--with-opencode` | Install opencode for `--user` |
+| `--no-cockpit` | Skip Cockpit and its modules |
+| `--no-upgrade` | Skip `apt upgrade`, install only |
+| `--skip-network` | Leave netplan untouched |
+| `--skip-ssh` | Leave sshd untouched |
+| `--docker-root PATH` | Parent for stacks and appdata, default `/docker` |
 
-### Core Components
-- **Docker CE** - Container runtime
-- **Docker Compose** - Multi-container orchestration
-- **Cockpit** - Web-based server management (port 9090)
-- **Cockpit Navigator** - File browser for Cockpit
+## What gets installed
 
-### Optional Modules (selected during installation)
-- `cockpit-docker` - Manage Docker containers via Cockpit
-- `cockpit-podman` - Manage Podman containers
-- `cockpit-389-ds` - 389 Directory Server management
-- `cockpit-machines` - Virtual machine management
+### Core
+- **Docker CE** — container runtime
+- **Docker Compose** — plugin, invoked as `docker compose`
+- **Cockpit** — web management on port 9090
+- **Cockpit Navigator** — file browser
+- Base tooling: `git`, `jq`, `tmux`, `htop`, `rsync`, `ncdu`, `tree`, `ethtool`, `curl`, `gnupg`
 
-## 🔧 Usage
+### Optional Cockpit modules
+- `cockpit-docker` — container UI
+- `cockpit-podman` — Podman UI
+- `cockpit-machines` — VM management
+- `cockpit-389-ds` — directory server
 
-After installation, access your server:
+Modules that a given Ubuntu release does not ship are skipped with a warning
+rather than failing the run.
 
-1. **Cockpit Web Interface**
-   ```
-   https://your-server-ip:9090
-   ```
+### Optional agents
+- **Tailscale** — private network for administration; every port and protocol works
+- **cloudflared** — outbound tunnel for publishing HTTP services
+- **opencode** — linked into `/usr/local/bin` so it works from any shell
 
-2. **Docker Management**
-   ```bash
-   # Verify Docker installation
-   docker --version
-   docker compose version
-   
-   # Run a test container
-   docker run hello-world
-   ```
+## The DHCP problem this script fixes
 
-3. **Cockpit Features**
-   - System monitoring (CPU, memory, disk usage)
-   - Service management
-   - Network configuration
-   - User account management
-   - Docker container management (if module installed)
-   - File browser with Navigator
+An Ubuntu Server install that runs without a network cable writes a netplan file
+with no addressing method:
 
-## 📝 Script Details
+```yaml
+network:
+  ethernets:
+    eno1:
+      match:
+        macaddress: ac:e2:d3:09:08:72
+      set-name: eno1
+  version: 2
+```
 
-The script performs the following steps:
+The link comes up at full speed and the interface never asks for a lease, so
+`ip a` shows `state UP` with only a link-local address. The router and the cable
+are fine. The script detects the missing `dhcp4: true`, identifies the wired
+interface by its current MAC rather than assuming a name, and rewrites the file.
 
-1. **System Check** - Verifies Ubuntu Server and root permissions
-2. **Confirmation** - Shows what will be installed
-3. **System Update** - Updates all packages
-4. **Docker Installation** - Installs Docker CE from official repository
-5. **Cockpit Installation** - Installs and enables Cockpit web interface
-6. **Module Installation** - Interactive selection of Cockpit modules
-7. **Firewall Configuration** - Opens port 9090 for Cockpit (if UFW is active)
-8. **Summary** - Shows installation results and access instructions
+## Security defaults
 
-## ⚙️ Customization
+- SSH accepts keys only; passwords and root logins are rejected
+- `ufw` denies inbound by default
+- SSH stays open on all interfaces for recovery
+- Cockpit is reachable only from the detected LAN subnet and from `tailscale0`
+- Container logs are capped at 10 MB × 3 files
+- `kernel.panic = 10` reboots the machine after a panic
 
-Edit the script to:
-- Skip certain installations
-- Add additional packages
-- Change default options
-- Configure specific firewall rules
+Check any of these after a run:
 
-## 🧪 Testing
+```bash
+sudo sshd -T | grep -E 'passwordauthentication|permitrootlogin'
+sudo ufw status verbose
+docker info --format '{{.LoggingDriver}}'
+```
 
-Tested on:
-- Ubuntu Server 22.04 LTS
+## After the script
+
+1. Confirm your SSH key works in a second session before closing the console.
+2. `sudo tailscale up --ssh --hostname=<name>` and disable key expiry for the node.
+3. `sudo cloudflared service install <tunnel-token>` if you want public hostnames.
+4. Set **power on after AC loss** in the BIOS. Without it, a power cut leaves the
+   box off until someone presses the button.
+5. Reboot with nothing attached and confirm the machine returns unattended.
+
+Steps 4 and 5 are the difference between a server and a box that works until the
+first outage.
+
+## Layout
+
+```
+/docker/stacks    compose files, one directory per service
+/docker/appdata   persistent container state
+```
+
+Run a service:
+
+```bash
+cd /docker/stacks/<service>
+docker compose up -d
+```
+
+## Tested on
+
+- Ubuntu Server 26.04 LTS
 - Ubuntu Server 24.04 LTS
 
-## ⚠️ Notes
+## Notes
 
-- Cockpit runs on port 9090 (HTTPS)
-- Docker requires root privileges
-- Some Cockpit modules may require additional configuration
-- The script is designed for fresh Ubuntu Server installations
+- Cockpit serves HTTPS on port 9090 with a self-signed certificate
+- `docker` group membership needs a fresh login to take effect
+- The script does not install Cockpit modules that are absent from your release
+- Run it again after a release upgrade; it repairs anything that changed
 
-## 🤝 Contributing
+## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Issues and pull requests welcome.
 
-## 📄 License
+## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- [Docker](https://www.docker.com/) for container technology
-- [Cockpit Project](https://cockpit-project.org/) for the web interface
-- [Ubuntu](https://ubuntu.com/) for the server platform
-
----
-
-**Happy Server Management!** 🎉
+MIT
